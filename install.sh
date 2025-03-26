@@ -11,6 +11,7 @@
 /bin/echo "LOCALSTATEDIR=${LOCALSTATEDIR:=/var};"
 /bin/echo "SBINDIR      =${SBINDIR:=/sbin};"
 /bin/echo "MANDIR       =${MANDIR:=/usr/share/man};"
+/bin/echo "NAMEDDIR     =${NAMEDDIR:=/named};"
 
 /usr/bin/install -d $BUILDROOT/$UNITDIR
 /usr/bin/install -d $BUILDROOT/$SBINDIR
@@ -21,6 +22,7 @@
 /usr/bin/install -d $BUILDROOT/$LOCALSTATEDIR/lib/$NAME/vhosts
 /usr/bin/install -d $BUILDROOT/$LOCALSTATEDIR/lib/$NAME/certs
 /usr/bin/install -d $BUILDROOT/$LOCALSTATEDIR/lib/$NAME/named
+/usr/bin/install -d $BUILDROOT/$LOCALSTATEDIR/$NAMEDDIR
 /usr/bin/install -d $BUILDROOT/$LOCALSTATEDIR/lib/$NAME/vmail
 /bin/ln -s $LOCALSTATEDIR/lib/$NAME/etc/nginx.conf \
            $BUILDROOT/$SYSCONFDIR/nginx/conf.d/topgen.conf

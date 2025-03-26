@@ -44,7 +44,7 @@ NAMED_CONF='/var/lib/topgen/etc/named.conf'
 NAMED_ZD='/var/lib/topgen/named'
 
 # if "yes", force/overwrite any prior existing configuration
-FORCE_GEN='no'
+FORCE_GEN='yes'
 
 # if "yes", do not print warnings and a success notification
 QUIET_GEN='no'
@@ -394,7 +394,7 @@ view "caching" {
 
 	zone "." IN {
 		type hint;
-		file "named.ca";
+		file "/etc/topgen/named.root";
 	};
 };
 
@@ -613,5 +613,5 @@ Required next steps may include:
 
 # FIXME: Sort out SELinux policy associated with topgen package !!!
 # But, for now, let's label the relevant files for use by named:
-chcon -t named_conf_t $NAMED_CONF
-chcon -R -t named_zone_t $NAMED_ZD/*
+# chcon -t named_conf_t $NAMED_CONF
+# chcon -R -t named_zone_t $NAMED_ZD/*

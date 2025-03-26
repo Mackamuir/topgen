@@ -1,3 +1,5 @@
+#!/bin/python3
+
 from urllib.parse import urlparse
 import logging
 import asyncio
@@ -5,17 +7,20 @@ import glob
 import re
 import shutil
 import os
+import pwd
+import grp
 import tempfile
 import atexit
 import enlighten
 
 
 # Download websites
-TOPGEN_VARLIB = os.path.realpath("/mnt/c/Users/mack/Documents/Code/topgen/PyTopgen/topgenpy")
+TOPGEN_VARLIB = os.path.realpath("/var/lib/topgen")
+TOPGEN_ORIG = os.path.realpath("/etc/topgen/scrape_sites.txt")
 TOPGEN_VHOSTS = os.path.join(TOPGEN_VARLIB, "vhosts")
 TOPGEN_VARETC = os.path.join(TOPGEN_VARLIB, "etc")
 TOPGEN_CERTS = os.path.join(TOPGEN_VARLIB, "certs")
-TOPGEN_ORIG = os.path.join(TOPGEN_VARETC, "scrape_sites.txt")
+
 TOPGEN_CUSTOM_VHOSTS = os.path.join(TOPGEN_VARETC, "custom_vhosts")
 
 # Ensure directories exist
@@ -36,14 +41,14 @@ BAR_FMT = '{desc}:{desc_pad}{percentage:3.0f}% |{bar}| {count:{len_total}d}/{tot
 
 # Modify the logging configuration at the top
 logging.basicConfig(
-    filename='download.log',
+#    filename='download.log',
     level=logging.DEBUG,
     format='%(asctime)s %(levelname)s: %(message)s',
 )
 
 # Log both to console and file
 logger = logging.getLogger("enlighten")
-logger.addHandler(logging.FileHandler('download.log'))
+#logger.addHandler(logging.FileHandler('download.log'))
 logger.addHandler(logging.StreamHandler())
 
 # Helper functions
@@ -469,7 +474,7 @@ async def main():
         color='bold_underline_bright_white_on_lightslategray',
         justify=enlighten.Justify.CENTER, demo='Initializing',
         autorefresh=True, min_delta=0.5)
-    #await download_websites()
+    await download_websites()
     await handle_custom_vhosts()
     await cleanup_vhosts()
     await curate_vhosts()
