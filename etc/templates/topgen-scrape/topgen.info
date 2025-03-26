@@ -1,0 +1,23 @@
+<html>
+    <head>
+    <title>Welcome to TopGen.info !</title>
+    </head>
+    <body> <div style="text-align: justify; width: 500pt">
+    <h2>Welcome to TopGen.info !</h2>
+    This is a simulation of the World Wide Web. View this site in either
+    <ul>
+    <li> Cleartext: <a href="http://topgen.info">http://topgen.info</a>
+    <li> HTTPS: <a href="https://topgen.info">https://topgen.info</a>;
+        <ul>
+        <li> Your browser requires the
+            <a href="topgen_ca.cer">TopGen CA Certificate</a>
+            to avoid certificate warnings! All simulated Web sites are
+            using certificates issued and signed by this CA!
+        </ul>
+    </ul>
+    Below is a list of Web sites mirrored for this simulation:
+    <ul>
+$vhosts
+    </ul>
+</div></body>
+</html>

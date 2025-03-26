@@ -7,25 +7,36 @@ import glob
 import re
 import shutil
 import os
-import pwd
-import grp
+from string import Template
 import tempfile
 import atexit
 import enlighten
+import argparse
+import configparser
 
 
-# Download websites
-TOPGEN_VARLIB = os.path.realpath("/var/lib/topgen")
-TOPGEN_ORIG = os.path.realpath("/etc/topgen/scrape_sites.txt")
+config = configparser.ConfigParser()
+config.read('topgen-settings.ini')
+
+# Set Environment to either 'Development' or 'Production'
+# dev will always overwrite all filed while prod will only write if the file does not exist
+ENVIRONMENT = config.get("GLOBAL", "Environment")
+wget_depth = config.get("TOPGEN-SCRAPE", "wget_depth")
+
+TOPGEN_VARLIB = os.path.realpath(config.get("GLOBAL", "VARLIB"))
+TOPGEN_ETC = os.path.realpath("/etc/topgen")
 TOPGEN_VHOSTS = os.path.join(TOPGEN_VARLIB, "vhosts")
 TOPGEN_VARETC = os.path.join(TOPGEN_VARLIB, "etc")
 TOPGEN_CERTS = os.path.join(TOPGEN_VARLIB, "certs")
+TOPGEN_TEMPLATES = os.path.join(TOPGEN_ETC, "templates/topgen-scrape")
 
-TOPGEN_CUSTOM_VHOSTS = os.path.join(TOPGEN_VARETC, "custom_vhosts")
+TOPGEN_ORIG = os.path.join(TOPGEN_ETC, "scrape_sites.txt")
+TOPGEN_CUSTOM_VHOSTS = os.path.join(TOPGEN_ETC, "custom_vhosts")
 
 # Ensure directories exist
 os.makedirs(TOPGEN_VHOSTS, exist_ok=True)
 os.makedirs(TOPGEN_CERTS, exist_ok=True)
+os.makedirs(TOPGEN_VARETC, exist_ok=True)
 
 # topgen.info vhost directory:
 TOPGEN_SITE = os.path.join(TOPGEN_VHOSTS, "topgen.info")
@@ -41,14 +52,14 @@ BAR_FMT = '{desc}:{desc_pad}{percentage:3.0f}% |{bar}| {count:{len_total}d}/{tot
 
 # Modify the logging configuration at the top
 logging.basicConfig(
-#    filename='download.log',
+#    filename='topgen-scrape.log',
     level=logging.DEBUG,
     format='%(asctime)s %(levelname)s: %(message)s',
 )
 
 # Log both to console and file
 logger = logging.getLogger("enlighten")
-#logger.addHandler(logging.FileHandler('download.log'))
+#logger.addHandler(logging.FileHandler('topgen-scrape.log'))
 logger.addHandler(logging.StreamHandler())
 
 # Helper functions
@@ -71,9 +82,10 @@ def format_elapsed_time(seconds):
 async def download_websites():
     """Download all websites from TOPGEN_ORIG"""
     tasks = []
-    
     # Create task list
     for url in open(TOPGEN_ORIG):
+        if url.startswith('#'):
+            continue
         task = asyncio.create_task(download_website(url))
         tasks.append(task)
     
@@ -97,7 +109,6 @@ async def download_websites():
     pbar.count = len(tasks)
     pbar.close()
 
-# Then in your download_website function:
 async def download_website(url):
     url = url.strip()
     if not url:
@@ -106,7 +117,7 @@ async def download_website(url):
     pbar = manager.counter(desc=f'    Scraping %s' % hostname, autorefresh=True, counter_format='{desc}:{desc_pad}[Elapsed: {elapsed}]')
     try:
         proc = await asyncio.create_subprocess_shell(
-            f"/usr/bin/wget -v --page-requisites --recursive --adjust-extension --span-hosts -N --convert-file-only --no-check-certificate -e robots=off --random-wait -t 2 -U 'Mozilla/5.0 (X11)' -P {TOPGEN_VHOSTS} -l 1 {url}",
+            f"/usr/bin/wget -v --page-requisites --recursive --adjust-extension --span-hosts -N --convert-file-only --no-check-certificate -e robots=off --random-wait -t 2 -U 'Mozilla/5.0 (X11)' -P {TOPGEN_VHOSTS} -l {wget_depth} {url}",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE)
         
@@ -200,7 +211,6 @@ async def curate_vhosts():
                     logger.info(f"Curated: {src} -> {dst}")
             pbar.update(1)
 
-
 async def generate_landing_page():
     """Generate the topgen.info landing page"""
     with manager.counter(total=1, desc='Generating topgen.info', bar_format=BAR_FMT) as pbar:
@@ -210,53 +220,25 @@ async def generate_landing_page():
         # Get list of vhosts (excluding topgen.info itself)
         vhosts = [os.path.basename(v) for v in glob.glob(f"{TOPGEN_VHOSTS}/*") 
                 if not v.endswith('topgen.info')]
-        
-        # HTML template
-        html_content = """
-<html>
-    <head>
-    <title>Welcome to TopGen.info !</title>
-    </head>
-    <body> <div style="text-align: justify; width: 500pt">
-    <h2>Welcome to TopGen.info !</h2>
-    This is a simulation of the World Wide Web. View this site in either
-    <ul>
-    <li> Cleartext: <a href="http://topgen.info">http://topgen.info</a>
-    <li> HTTPS: <a href="https://topgen.info">https://topgen.info</a>;
-        <ul>
-        <li> Your browser requires the
-            <a href="topgen_ca.cer">TopGen CA Certificate</a>
-            to avoid certificate warnings! All simulated Web sites are
-            using certificates issued and signed by this CA!
-        </ul>
-    </ul>
-    Below is a list of Web sites mirrored for this simulation:
-    <ul>
-        """
-
+        html_content = ""
         # Add vhost entries
         for vhost in sorted(vhosts):
-            html_content += f'    <li><a href="//{vhost}">{vhost}</a>\n'
+            html_content += f'      <li><a href="//{vhost}">{vhost}</a>\n'
         
-        # Close HTML
-        html_content += """
-    </ul>
-</div></body>
-</html>
-        """
-        
-        # Write the file
+        # Write file from Template
         index_path = os.path.join(TOPGEN_SITE, "index.html")
         with open(index_path, 'w') as f:
-            f.write(html_content)
+            with open (os.path.join(TOPGEN_TEMPLATES, "topgen.info"), 'r') as template:
+                template_source = Template(template.read())
+                template_result = template_source.substitute(vhosts=html_content)
+            f.write(template_result)
         
         logger.debug(f"Generated landing page with {len(vhosts)} vhosts")
         pbar.update(1)
 
-
 async def generate_CA():
     """Generate SSL certificates for TopGen"""
-    with manager.counter(total=1, desc='Generating vHost Certificates', bar_format=BAR_FMT) as pbar:
+    with manager.counter(total=1, desc='Generating CA', bar_format=BAR_FMT) as pbar:
         # Check if CA certificates already exist
         ca_key = os.path.join(TOPGEN_VARETC, "topgen_ca.key")
         ca_cert = os.path.join(TOPGEN_VARETC, "topgen_ca.cer")
@@ -296,49 +278,21 @@ async def generate_CA():
             f.write("000a")
         with open(os.path.join(tmp_ca_dir, "index"), 'w') as f:
             pass  # Create empty index file
-        
-        # Generate CA configuration
-        ca_conf = f"""[ ca ]
-default_ca = topgen_ca
-
-[ crl_ext ]
-authorityKeyIdentifier=keyid:always
-
-[ topgen_ca ]
-private_key = {ca_key}
-certificate = {ca_cert}
-new_certs_dir = {tmp_ca_dir}
-database = {tmp_ca_dir}/index
-serial = {tmp_ca_dir}/serial
-default_days = 3650
-default_md = sha512
-copy_extensions = copy
-unique_subject = no
-policy = topgen_ca_policy
-x509_extensions = topgen_ca_ext
-
-[ topgen_ca_policy ]
-countryName = supplied
-stateOrProvinceName = supplied
-localityName = supplied
-organizationName = supplied
-organizationalUnitName = supplied
-commonName = supplied
-emailAddress = optional
-
-[ topgen_ca_ext ]
-basicConstraints = CA:false
-nsCertType = server
-nsComment = "TopGen CA Generated Certificate"
-subjectKeyIdentifier = hash
-authorityKeyIdentifier = keyid,issuer:always
-"""
     
         # Write CA configuration
-        
         ca_conf_path = os.path.join(tmp_ca_dir, "ca.conf")
+        # Create Dict of CA configuration values
+        ca_dict = {
+            'tmp_ca_dir': tmp_ca_dir,
+            'ca_cert': ca_cert,
+            'ca_key': ca_key
+        }
+        
         with open(ca_conf_path, 'w') as f:
-            f.write(ca_conf)
+            with open (os.path.join(TOPGEN_TEMPLATES, "CertificateAuthority.conf"), 'r') as template:
+                template_source = Template(template.read())
+                template_result = template_source.substitute(ca_dict)
+            f.write(template_result)
         
         # Store tmp_ca_dir path for cleanup
         global TMP_CA_DIR
@@ -349,28 +303,24 @@ authorityKeyIdentifier = keyid,issuer:always
         logger.debug(f"Certificate generation complete. Temporary CA dir: {tmp_ca_dir}")
         pbar.update(1)
 
-
 async def generate_vhost_certificates():
     """Generate certificates and nginx configuration for all vhosts"""
-    vhosts = list(glob.glob(f"{TOPGEN_VHOSTS}/*"))
     global CA_CONF_PATH
+
+    vhosts = list(glob.glob(f"{TOPGEN_VHOSTS}/*"))
+    # Get CSR configuration
+    vh_template = open(os.path.join(TOPGEN_TEMPLATES, "vHost_CSR.conf"), 'r')
 
     with manager.counter(total=len(vhosts), desc='Generate vHost Certificates', bar_format=BAR_FMT) as pbar:
         for vhost in vhosts:
             vhost_base = os.path.basename(vhost)
             cert_path = os.path.join(TOPGEN_CERTS, f"{vhost_base}.cer")
 
-        # Generate CSR configuration
-            vh_conf = f"""
-req_extensions = v3_req
-[ v3_req ]
-basicConstraints = CA:FALSE
-keyUsage = nonRepudiation, digitalSignature, keyEncipherment
-subjectAltName = @alt_names
-[alt_names]
-DNS.1 = {vhost_base}
-"""
-        # Generate certificate
+            # Generate CSR configuration
+            template_source = Template(vh_template.read())
+            vh_conf = template_source.substitute(vhost_base=vhost_base)
+        
+            # Generate certificate
             proc = await asyncio.create_subprocess_exec(
                 'openssl', 'ca', '-batch', '-notext',
                 '-config', CA_CONF_PATH,
@@ -380,13 +330,14 @@ DNS.1 = {vhost_base}
                 stderr=asyncio.subprocess.DEVNULL
             )
                 
-                # Generate CSR and pipe to CA
+            # Generate CSR and pipe to CA
             csr_cmd = [
                 'openssl', 'req', '-new',
                 '-key', os.path.join(TOPGEN_VARETC, "topgen_vh.key"),
                 '-subj', '/C=US/ST=PA/L=Pgh/O=CMU/OU=CERT/CN=topgen_vh',
                 '-config', '-'
             ]
+
             csr_proc = await asyncio.create_subprocess_exec(
                 *csr_cmd,
                 stdin=asyncio.subprocess.PIPE,
@@ -399,7 +350,6 @@ DNS.1 = {vhost_base}
 
             pbar.update(1)
 
-
 async def generate_nginx_conf():
     vhosts = list(glob.glob(f"{TOPGEN_VHOSTS}/*"))
 
@@ -410,34 +360,25 @@ async def generate_nginx_conf():
         os.remove(nginx_conf)
     
     with manager.counter(total=len(vhosts), desc='Generating nginx.conf', bar_format=BAR_FMT) as pbar:
-        # Generate base nginx.conf
-        nginx_conf_base = f"""    # use a common key for all certificates:
-ssl_certificate_key {TOPGEN_VARETC}/topgen_vh.key;
-
-# ensure enumerated https server blocks fit into nginx hash table:
-server_names_hash_bucket_size 256;
-server_names_hash_max_size 131070;
-    """
-        with open(os.path.join(TOPGEN_VARETC, "nginx.conf"), 'w') as f:
-            f.write(nginx_conf_base)
         
+        # Generate base nginx.conf
+        with open(os.path.join(TOPGEN_VARETC, "nginx.conf"), 'w') as f:
+            with open (os.path.join(TOPGEN_TEMPLATES, "nginx.conf_base"), 'r') as template:
+                template_source = Template(template.read())
+                template_result = template_source.substitute(TOPGEN_VARETC=TOPGEN_VARETC)
+            f.write(template_result)
+        
+        # Get nginx block template
+        nginx_block_template = Template(open(os.path.join(TOPGEN_TEMPLATES, "nginx.conf_vhost"), 'r').read())
+
         for vhost in vhosts:
             vhost_base = os.path.basename(vhost)
             cert_path = os.path.join(TOPGEN_CERTS, f"{vhost_base}.cer")
-            nginx_block = f"""
-server {{
-    listen 80;
-    listen 443 ssl;
-    ssl_certificate {cert_path};
-    server_name {vhost_base};
-    root {vhost};
-}}
-            """
             # Append to nginx.conf file
             with open(os.path.join(TOPGEN_VARETC, "nginx.conf"), 'a') as f:
+                nginx_block = nginx_block_template.substitute(cert_path=cert_path, vhost_base=vhost_base, vhost=vhost)
                 f.write(nginx_block)
             pbar.update(1)
-
 
 async def generate_hosts_nginx():
     vhosts = list(glob.glob(f"{TOPGEN_VHOSTS}/*"))
@@ -467,24 +408,59 @@ async def generate_hosts_nginx():
 
             pbar.update(1)
 
-
-
 async def main():
-    manager.status_bar(status_format=u'Topgen-Scrape{fill}{elapsed}',
-        color='bold_underline_bright_white_on_lightslategray',
-        justify=enlighten.Justify.CENTER, demo='Initializing',
-        autorefresh=True, min_delta=0.5)
-    await download_websites()
-    await handle_custom_vhosts()
-    await cleanup_vhosts()
-    await curate_vhosts()
-    await generate_CA()
-    await generate_landing_page()
-    await generate_vhost_certificates()
-    await generate_nginx_conf()
-    await generate_hosts_nginx()
+    global TOPGEN_ORIG
+    global TOPGEN_VARLIB
+    global ENVIRONMENT
 
+    parser = argparse.ArgumentParser(description="Recursively scrape, clean, curate a given list of Web sites. Additionally, issue certificates signed with a self-signed TopGen CA (which is in turn also generated, if necessary). Generate a drop-in config file for the nginx HTTP server, and a hosts file containing <ip_addr fqdn> entries for each scraped vhost.", formatter_class=argparse.RawTextHelpFormatter)
+    parser.add_argument("-s", "--sites", help=f"file containing space or newline separated sites to be scraped for static content; lines beginning with '#' are ignored;\n(default: {TOPGEN_ORIG})", default=TOPGEN_ORIG)
+    parser.add_argument("-t", "--targetdir", help=f"directory where all results (scraped content, list of vhosts, certificates, configuration files, etc. are stored;\n(default: {TOPGEN_VARLIB})", default=TOPGEN_VARLIB)
+    parser.add_argument("-e", "--environment", help=f"environment in which to run the script; 'Development' will overwrite all files, 'Production' will only write files that do not exist;\n(default: {ENVIRONMENT})", default=ENVIRONMENT)
+    args = parser.parse_args()
+    TOPGEN_ORIG = args.sites
+    TOPGEN_VARLIB = args.targetdir
+    ENVIRONMENT = args.environment
+
+    status = manager.status_bar(status_format=u'Topgen-Scrape - {ENVIRONMENT}{fill}{stage}{fill}{elapsed}',
+        color='bold_underline_bright_white_on_lightslategray',
+        justify=enlighten.Justify.CENTER, autorefresh=True, min_delta=0.5, stage='Initializing', ENVIRONMENT=ENVIRONMENT)
+    
+    if ENVIRONMENT == "Development" or ENVIRONMENT == "Production" and len(os.listdir(TOPGEN_VHOSTS)) == 0:
+        status.update(stage="Creating vHosts")
+        await download_websites()
+        await handle_custom_vhosts()
+        await cleanup_vhosts()
+        await curate_vhosts()
+        await generate_landing_page()
+    else:
+        logger.debug("Skipping vHost creation")
+
+    if ENVIRONMENT == "Development" or ENVIRONMENT == "Production" and len(os.listdir(TOPGEN_CERTS)) == 0:
+        status.update(stage="Generating Certificates")
+        await generate_CA()
+        await generate_vhost_certificates()
+    else:
+        logger.debug("Skipping certificate generation")
+    
+    if ENVIRONMENT == "Development" or ENVIRONMENT == "Production" and not os.path.exists(os.path.join(TOPGEN_ETC, "hosts.nginx")) and os.path.exists(os.path.join(TOPGEN_ETC, "nginx.conf")):
+        status.update(stage="Generating Nginx config files")
+        if ENVIRONMENT == "Development" or ENVIRONMENT == "Production" and not len(os.path.exists(os.path.join(TOPGEN_ETC, "hosts.nginx"))):
+            await generate_hosts_nginx()
+            logger.debug("Skipping hosts.nginx generation")
+        else:
+            logger.debug("Skipping hosts.nginx generation")
+        if ENVIRONMENT == "Development" or ENVIRONMENT == "Production" and not os.path.exists(os.path.join(TOPGEN_ETC, "nginx.conf")):
+            await generate_nginx_conf()
+            logger.debug("Skipping nginx.conf generation")
+        else: 
+            logger.debug("Skipping nginx.conf generation")
+    else:
+        logger.debug("Skipping Nginx config generation")
+    
+    status.update(stage="Finished")
     # Add cleanup at end of script
     atexit.register(lambda: shutil.rmtree(TMP_CA_DIR, ignore_errors=True))
+    
 
 asyncio.run(main())

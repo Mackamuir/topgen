@@ -1,0 +1,6 @@
+# use a common key for all certificates:
+ssl_certificate_key $TOPGEN_VARETC/topgen_vh.key;
+
+# ensure enumerated https server blocks fit into nginx hash table:
+server_names_hash_bucket_size 256;
+server_names_hash_max_size 131070;
