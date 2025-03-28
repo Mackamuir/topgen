@@ -12,6 +12,7 @@ Requires: coreutils, gawk, grep, sed, openssl, iproute
 Requires: bind, nginx, wget
 Requires: dovecot, postfix
 Requires: tor
+Requires: python3, python3-enlighten
 BuildRequires: systemd-units
 BuildArch: noarch
 
@@ -50,6 +51,7 @@ NAME=%{name} BUILDROOT=%{buildroot} UNITDIR=%{_unitdir} \
 %{_sysconfdir}/nginx/conf.d/topgen.conf
 # /etc/topgen directory and config files:
 %dir %{_sysconfdir}/%{name}
+%dir %{_sysconfdir}/%{name}/templates
 %config(noreplace) %{_sysconfdir}/%{name}/scrape_sites.txt
 %config(noreplace) %{_sysconfdir}/%{name}/delegations.dns
 %config(noreplace) %{_sysconfdir}/%{name}/vmail.cfg
@@ -64,6 +66,7 @@ NAME=%{name} BUILDROOT=%{buildroot} UNITDIR=%{_unitdir} \
 %dir %{_localstatedir}/lib/%{name}/vhosts
 %dir %{_localstatedir}/lib/%{name}/certs
 %dir %{_localstatedir}/lib/%{name}/named
+%dir %{_localstatedir}/lib/%{name}/custom_vhosts
 %dir %attr (0700, dovenull, dovenull) %{_localstatedir}/lib/%{name}/vmail
 
 %changelog

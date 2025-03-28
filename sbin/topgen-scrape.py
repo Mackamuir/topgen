@@ -12,34 +12,37 @@ import tempfile
 import atexit
 import enlighten
 import argparse
-import configparser
-
-
-config = configparser.ConfigParser()
-config.read('topgen-settings.ini')
+import resource
 
 # Set Environment to either 'Development' or 'Production'
 # dev will always overwrite all filed while prod will only write if the file does not exist
-ENVIRONMENT = config.get("GLOBAL", "Environment")
-wget_depth = config.get("TOPGEN-SCRAPE", "wget_depth")
+ENVIRONMENT = "Production"
+wget_depth = 1
 
-TOPGEN_VARLIB = os.path.realpath(config.get("GLOBAL", "VARLIB"))
+TOPGEN_VARLIB = os.path.realpath("/var/lib/topgen")
 TOPGEN_ETC = os.path.realpath("/etc/topgen")
 TOPGEN_VHOSTS = os.path.join(TOPGEN_VARLIB, "vhosts")
 TOPGEN_VARETC = os.path.join(TOPGEN_VARLIB, "etc")
 TOPGEN_CERTS = os.path.join(TOPGEN_VARLIB, "certs")
-TOPGEN_TEMPLATES = os.path.join(TOPGEN_ETC, "templates/topgen-scrape")
+TOPGEN_TEMPLATES = os.path.join(TOPGEN_VARLIB, "templates/")
 
 TOPGEN_ORIG = os.path.join(TOPGEN_ETC, "scrape_sites.txt")
 TOPGEN_CUSTOM_VHOSTS = os.path.join(TOPGEN_ETC, "custom_vhosts")
+
+# topgen.info vhost directory:
+TOPGEN_SITE = os.path.join(TOPGEN_VHOSTS, "topgen.info")
+
+
+# up limits so topgen-scrape.py won't run out of file descriptors:
+resource.setrlimit(
+    resource.RLIMIT_NOFILE,
+    (resource.RLIM_INFINITY, resource.RLIM_INFINITY))
+
 
 # Ensure directories exist
 os.makedirs(TOPGEN_VHOSTS, exist_ok=True)
 os.makedirs(TOPGEN_CERTS, exist_ok=True)
 os.makedirs(TOPGEN_VARETC, exist_ok=True)
-
-# topgen.info vhost directory:
-TOPGEN_SITE = os.path.join(TOPGEN_VHOSTS, "topgen.info")
 
 #CA
 TMP_CA_DIR = None

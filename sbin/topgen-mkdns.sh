@@ -44,7 +44,7 @@ NAMED_CONF='/var/lib/topgen/etc/named.conf'
 NAMED_ZD='/var/lib/topgen/named'
 
 # if "yes", force/overwrite any prior existing configuration
-FORCE_GEN='yes'
+FORCE_GEN='no'
 
 # if "yes", do not print warnings and a success notification
 QUIET_GEN='no'
