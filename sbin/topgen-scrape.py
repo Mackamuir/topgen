@@ -17,6 +17,8 @@ import resource
 # Set Environment to either 'Development' or 'Production'
 # dev will always overwrite all filed while prod will only write if the file does not exist
 ENVIRONMENT = "Production"
+
+# How deep will wget go, setting this to anything more than 1 will increase scrape time by a LOT, but will result in more complete sites
 wget_depth = 1
 
 TOPGEN_VARLIB = os.path.realpath("/var/lib/topgen")
@@ -32,11 +34,14 @@ TOPGEN_CUSTOM_VHOSTS = os.path.join(TOPGEN_ETC, "custom_vhosts")
 # topgen.info vhost directory:
 TOPGEN_SITE = os.path.join(TOPGEN_VHOSTS, "topgen.info")
 
+# The maximum number of open file descriptors, if you get an error about too many open files, increase this number
+# 8192 is more than enough for ~500 sites
+TOPGEN_NOFILE = 8192
 
 # up limits so topgen-scrape.py won't run out of file descriptors:
 resource.setrlimit(
     resource.RLIMIT_NOFILE,
-    (resource.RLIM_INFINITY, resource.RLIM_INFINITY))
+    (TOPGEN_NOFILE, TOPGEN_NOFILE))
 
 
 # Ensure directories exist
