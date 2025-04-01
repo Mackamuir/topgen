@@ -453,7 +453,7 @@ async def main():
     # dev will always overwrite all filed while prod will only write if the file does not exist
     parser.add_argument("-e", "--environment", help="environment in which to run the script; 'Development' will overwrite all files, 'Production' will only write files that do not exist;\\n(default: Production)", default="Production")
     parser.add_argument("-d", "--skip-scrape", help="Skip the scraping of websites, for if you want to quickly add new vhosts.", action='store_false')
-    parser.add_argument("-h", "--skip-hosts", help="Skip generating of the hosts.nginx file", action='store_false')
+    parser.add_argument("-n", "--skip-hosts", help="Skip generating of the hosts.nginx file", action='store_false')
     args = parser.parse_args()
     TOPGEN_ORIG = args.sites
     TOPGEN_VARLIB = args.target_dir
