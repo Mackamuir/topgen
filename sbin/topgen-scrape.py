@@ -122,7 +122,7 @@ async def download_website(url):
     if not url:
         raise ValueError("URL is empty")
     hostname = urlparse(url).hostname
-    pbar = manager.counter(desc=f'    Scraping %s' % hostname, autorefresh=True, counter_format='{desc}:{desc_pad}[Elapsed: {elapsed}]')
+    pbar = manager.counter(desc='    Scraping %s' % hostname, autorefresh=True, counter_format='{desc}:{desc_pad}[Elapsed: {elapsed}]')
     try:
         proc = await asyncio.create_subprocess_shell(
             f"/usr/bin/wget -v --page-requisites --recursive --adjust-extension --span-hosts -N --convert-file-only --no-check-certificate -e robots=off --random-wait -t 2 -U 'Mozilla/5.0 (X11)' -P {TOPGEN_VHOSTS} -l {wget_depth} {url}",
@@ -374,6 +374,7 @@ async def generate_nginx_conf():
                 template_source = Template(template.read())
                 template_result = template_source.substitute(TOPGEN_VARETC=TOPGEN_VARETC)
             f.write(template_result)
+            logger.debug("Writing base for nginx.conf")
         
         # Get nginx block template
         nginx_block_template = Template(open(os.path.join(TOPGEN_TEMPLATES, "nginx.conf_vhost"), 'r').read())
@@ -385,7 +386,9 @@ async def generate_nginx_conf():
             with open(os.path.join(TOPGEN_VARETC, "nginx.conf"), 'a') as f:
                 nginx_block = nginx_block_template.substitute(cert_path=cert_path, vhost_base=vhost_base, vhost=vhost)
                 f.write(nginx_block)
+                logger.debug(f"Wrote nginx block for {vhost_base}")
             pbar.update(1)
+        logger.debug(f"Finished writing nginx.conf for {len(vhosts)} vhosts")
 
 async def generate_hosts_nginx():
     vhosts = list(glob.glob(f"{TOPGEN_VHOSTS}/*"))
