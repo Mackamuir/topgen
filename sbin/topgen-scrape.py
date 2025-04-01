@@ -469,7 +469,7 @@ async def main():
     parser.add_argument("-e", "--environment", help=f"environment in which to run the script; 'Development' will overwrite all files, 'Production' will only write files that do not exist;\n(default: {ENVIRONMENT})", default=ENVIRONMENT)
     parser.add_argument("-d", "--skip-scrape", help="Skip the scraping of websites, for if you want to quickly add new vhosts.", action='store_true')
     args = parser.parse_args()
-    SKIP_SCRAPE = args.SKIP_SCRAPE
+    SKIP_SCRAPE = args.skip_scrape
     TOPGEN_ORIG = args.sites
     TOPGEN_VARLIB = args.targe_tdir
     ENVIRONMENT = args.environment
