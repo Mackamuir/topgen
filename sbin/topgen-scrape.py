@@ -26,7 +26,7 @@ TOPGEN_ETC = os.path.realpath("/etc/topgen")
 TOPGEN_VHOSTS = os.path.join(TOPGEN_VARLIB, "vhosts")
 TOPGEN_VARETC = os.path.join(TOPGEN_VARLIB, "etc")
 TOPGEN_CERTS = os.path.join(TOPGEN_VARLIB, "certs")
-TOPGEN_TEMPLATES = os.path.join(TOPGEN_VARLIB, "templates/")
+TOPGEN_TEMPLATES = os.path.join(TOPGEN_VARLIB, "templates/topgen-scrape")
 
 TOPGEN_ORIG = os.path.join(TOPGEN_ETC, "scrape_sites.txt")
 TOPGEN_CUSTOM_VHOSTS = os.path.join(TOPGEN_ETC, "custom_vhosts")
@@ -360,7 +360,6 @@ async def generate_vhost_certificates():
 
 async def generate_nginx_conf():
     vhosts = list(glob.glob(f"{TOPGEN_VHOSTS}/*"))
-
 
     # Remove old nginx.conf if exists
     nginx_conf = os.path.join(TOPGEN_VARETC, "nginx.conf")

@@ -1,0 +1,7 @@
+	server {
+	  listen 80;
+	  listen 443 ssl;
+	  ssl_certificate $cert_path/$vhost_base.cer;
+	  server_name $vhost_base;
+	  root $vhost;
+	}
