@@ -467,6 +467,8 @@ async def main():
         status.update(stage="Creating vHosts")
         if args.skip_scrape:
             await download_websites()
+        else:
+            manager.counter(desc='Skipped Scraping Sites').close()
         await handle_custom_vhosts()
         await cleanup_vhosts()
         await curate_vhosts()
@@ -484,8 +486,10 @@ async def main():
     if ENVIRONMENT == "Development" or ENVIRONMENT == "Production" and not os.path.exists(os.path.join(TOPGEN_ETC, "hosts.nginx")) and os.path.exists(os.path.join(TOPGEN_ETC, "nginx.conf")):
         status.update(stage="Generating Nginx config files")
         if ENVIRONMENT == "Development" or ENVIRONMENT == "Production" and not len(os.path.exists(os.path.join(TOPGEN_ETC, "hosts.nginx"))):
-            if args.skip_host:
+            if args.skip_hosts:
                 await generate_hosts_nginx()
+            else:
+                manager.counter(desc='Skipped generating hosts.nginx').close()
         else:
             logger.debug("Skipping hosts.nginx generation")
         if ENVIRONMENT == "Development" or ENVIRONMENT == "Production" and not os.path.exists(os.path.join(TOPGEN_ETC, "nginx.conf")):
