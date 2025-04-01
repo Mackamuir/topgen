@@ -411,7 +411,6 @@ async def generate_nginx_conf():
         os.remove(nginx_conf)
     
     with manager.counter(total=len(vhosts), desc='Generating nginx.conf', bar_format=BAR_FMT) as pbar:
-        
         # Generate base nginx.conf
         try:
             with open(os.path.join(TOPGEN_VARETC, "nginx.conf"), 'w') as f:
