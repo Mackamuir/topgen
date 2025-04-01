@@ -471,7 +471,7 @@ async def main():
     args = parser.parse_args()
     SKIP_SCRAPE = args.skip_scrape
     TOPGEN_ORIG = args.sites
-    TOPGEN_VARLIB = args.targe_dir
+    TOPGEN_VARLIB = args.target_dir
     ENVIRONMENT = args.environment
 
     status = manager.status_bar(status_format=u'Topgen-Scrape - {ENVIRONMENT}{fill}{stage}{fill}{elapsed}',
