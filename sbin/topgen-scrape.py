@@ -371,6 +371,54 @@ async def generate_vhost_certificates():
             pbar.update(1)
             logger.debug(f"[{vhost}] Wrote certificate to {cert_path}")
 
+async def generate_hosts_nginx():
+    vhosts = list(glob.glob(f"{TOPGEN_VHOSTS}/*"))
+    tasks = []
+
+    # Create task list
+    for vhost in vhosts:
+        task = asyncio.create_task(generate_vhost_hosts_nginx(vhost))
+        tasks.append(task)
+
+    # Create progress bar
+    pbar = manager.counter(total=len(tasks),desc='Generating hosts.nginx',bar_format=BAR_FMT)
+    await asyncio.sleep(0.1)  # Wait for progress bar to initialize
+    # Update progress bar every second
+    async def update_progress():
+        while not all(task.done() for task in tasks):
+            completed = sum(task.done() for task in tasks)
+            pbar.count = completed
+            pbar.refresh()
+            await asyncio.sleep(1)
+
+    # Run progress updater and tasks
+    update_task = asyncio.create_task(update_progress())
+    await asyncio.gather(*tasks)
+    await update_task
+
+    # Final update and close
+    pbar.count = len(tasks)
+    pbar.close()
+
+async def generate_vhost_hosts_nginx(vhost):
+    vhost_base = os.path.basename(vhost)
+
+    # Resolve IP address
+    try:
+        # Using socket to resolve hostname
+        logger.debug(f"[{vhost}] Gathering IP Address from external DNS")
+        import socket
+        vhost_ip = socket.gethostbyname(vhost_base)
+    except socket.gaierror:
+        # Use fallback IP for unresolvable hosts
+        vhost_ip = "1.0.0.0"
+        logger.warning(f"[{vhost}] Unable to resolve IP address, using fallback IP {vhost_ip}")
+
+    # Append to hosts.nginx file
+    with open(os.path.join(TOPGEN_VARETC, "hosts.nginx"), 'a') as f:
+        f.write(f"{vhost_ip} {vhost_base}\n")
+    logger.debug(f"[{vhost}] Wrote {vhost_ip} {vhost_base} to hosts.nginx")
+
 async def generate_nginx_conf():
     vhosts = list(glob.glob(f"{TOPGEN_VHOSTS}/*"))
 
@@ -392,7 +440,6 @@ async def generate_nginx_conf():
         except Exception as e:
             logger.error(f'Failed writing base for nginx.conf: {str(e)}')
 
-        
         # Get nginx block template
         try:
             with open(os.path.join(TOPGEN_TEMPLATES, "nginx.conf_vhost"), 'r') as template:
@@ -410,37 +457,6 @@ async def generate_nginx_conf():
             logger.error(f'[{vhost_base}] Failed writing vhost for nginx.conf: {str(e)}')
 
         logger.debug(f"Finished writing nginx.conf for {len(vhosts)} vhosts")
-
-async def generate_hosts_nginx():
-    vhosts = list(glob.glob(f"{TOPGEN_VHOSTS}/*"))
-
-    # Remove old hosts.nginx if exists
-    hosts_nginx = os.path.join(TOPGEN_VARETC, "hosts.nginx")
-    if os.path.exists(hosts_nginx):
-        os.remove(hosts_nginx)
-
-    with manager.counter(total=len(vhosts), desc='Generating hosts.nginx', bar_format=BAR_FMT) as pbar:
-        for vhost in vhosts:
-    
-            vhost_base = os.path.basename(vhost)
-
-            # Resolve IP address
-            try:
-                # Using socket to resolve hostname
-                logger.debug(f"[{vhost}] Gathering IP Address from external DNS")
-                import socket
-                vhost_ip = socket.gethostbyname(vhost_base)
-            except socket.gaierror:
-                # Use fallback IP for unresolvable hosts
-                vhost_ip = "1.0.0.0"
-                logger.warning(f"[{vhost}] Unable to resolve IP address, using fallback IP {vhost_ip}")
-            
-            # Append to hosts.nginx file
-            with open(os.path.join(TOPGEN_VARETC, "hosts.nginx"), 'a') as f:
-                f.write(f"{vhost_ip} {vhost_base}\n")
-            logger.debug(f"[{vhost}] Wrote {vhost_ip} {vhost_base} to hosts.nginx")
-
-            pbar.update(1)
 
 async def main():
     global TOPGEN_ORIG
