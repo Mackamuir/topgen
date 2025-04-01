@@ -43,7 +43,6 @@ resource.setrlimit(
     resource.RLIMIT_NOFILE,
     (TOPGEN_NOFILE, TOPGEN_NOFILE))
 
-
 # Ensure directories exist
 os.makedirs(TOPGEN_VHOSTS, exist_ok=True)
 os.makedirs(TOPGEN_CERTS, exist_ok=True)
@@ -383,25 +382,33 @@ async def generate_nginx_conf():
     with manager.counter(total=len(vhosts), desc='Generating nginx.conf', bar_format=BAR_FMT) as pbar:
         
         # Generate base nginx.conf
-        with open(os.path.join(TOPGEN_VARETC, "nginx.conf"), 'w') as f:
-            with open (os.path.join(TOPGEN_TEMPLATES, "nginx.conf_base"), 'r') as template:
-                template_source = Template(template.read())
-                template_result = template_source.substitute(TOPGEN_VARETC=TOPGEN_VARETC)
-            f.write(template_result)
-            logger.debug("Writing base for nginx.conf")
+        try:
+            with open(os.path.join(TOPGEN_VARETC, "nginx.conf"), 'w') as f:
+                with open (os.path.join(TOPGEN_TEMPLATES, "nginx.conf_base"), 'r') as template:
+                    template_source = Template(template.read())
+                    template_result = template_source.substitute(TOPGEN_VARETC=TOPGEN_VARETC)
+                f.write(template_result)
+                logger.debug("Writing base for nginx.conf")
+        except Exception as e:
+            logger.error(f'Failed writing base for nginx.conf: {str(e)}')
+
         
         # Get nginx block template
-        nginx_block_template = Template(open(os.path.join(TOPGEN_TEMPLATES, "nginx.conf_vhost"), 'r').read())
+        try:
+            with open(os.path.join(TOPGEN_TEMPLATES, "nginx.conf_vhost"), 'r') as template:
+                template_source = Template(template.read())
+                for vhost in vhosts:
+                    vhost_base = os.path.basename(vhost)
+                    cert_path = os.path.join(TOPGEN_CERTS, f"{vhost_base}.cer")
+                    # Append to nginx.conf file
+                    with open(os.path.join(TOPGEN_VARETC, "nginx.conf"), 'a') as f:
+                        nginx_block = template_source.substitute(cert_path=cert_path, vhost_base=vhost_base, vhost=vhost)
+                        f.write(nginx_block)
+                        logger.debug(f"[{vhost_base}] Wrote vhost block to nginx.conf")
+                    pbar.update(1)
+        except Exception as e:
+            logger.error(f'[{vhost_base}] Failed writing vhost for nginx.conf: {str(e)}')
 
-        for vhost in vhosts:
-            vhost_base = os.path.basename(vhost)
-            cert_path = os.path.join(TOPGEN_CERTS, f"{vhost_base}.cer")
-            # Append to nginx.conf file
-            with open(os.path.join(TOPGEN_VARETC, "nginx.conf"), 'a') as f:
-                nginx_block = nginx_block_template.substitute(cert_path=cert_path, vhost_base=vhost_base, vhost=vhost)
-                f.write(nginx_block)
-                logger.debug(f"[{vhost_base}] Wrote nginx block to nginx.conf")
-            pbar.update(1)
         logger.debug(f"Finished writing nginx.conf for {len(vhosts)} vhosts")
 
 async def generate_hosts_nginx():
@@ -474,12 +481,10 @@ async def main():
         status.update(stage="Generating Nginx config files")
         if ENVIRONMENT == "Development" or ENVIRONMENT == "Production" and not len(os.path.exists(os.path.join(TOPGEN_ETC, "hosts.nginx"))):
             await generate_hosts_nginx()
-            logger.debug("Skipping hosts.nginx generation")
         else:
             logger.debug("Skipping hosts.nginx generation")
         if ENVIRONMENT == "Development" or ENVIRONMENT == "Production" and not os.path.exists(os.path.join(TOPGEN_ETC, "nginx.conf")):
             await generate_nginx_conf()
-            logger.debug("Skipping nginx.conf generation")
         else: 
             logger.debug("Skipping nginx.conf generation")
     else:
