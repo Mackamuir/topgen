@@ -248,11 +248,13 @@ async def generate_CA():
     """Generate SSL certificates for TopGen"""
     with manager.counter(total=1, desc='Generating CA', bar_format=BAR_FMT) as pbar:
         # Check if CA certificates already exist
+        logger.debug("Checking for existing CA certificates")
         ca_key = os.path.join(TOPGEN_VARETC, "topgen_ca.key")
         ca_cert = os.path.join(TOPGEN_VARETC, "topgen_ca.cer")
         
         # Generate CA if not exists
         if not (os.path.exists(ca_key) and os.path.exists(ca_cert)):
+            logger.debug("Not Found, Generating CA")
             proc = await asyncio.create_subprocess_exec(
                 'openssl', 'req', '-newkey', 'rsa:2048', '-nodes',
                 '-keyout', ca_key,
@@ -262,14 +264,16 @@ async def generate_CA():
                 stderr=asyncio.subprocess.DEVNULL
             )
             await proc.communicate()
-            
+
         # Copy CA cert to topgen.info site
         os.makedirs(TOPGEN_SITE, exist_ok=True)
         shutil.copy2(ca_cert, TOPGEN_SITE)
-        
+        logger.debug("Copied CA cert to topgen.info site")
         # Generate vhost key if not exists
         vh_key = os.path.join(TOPGEN_VARETC, "topgen_vh.key")
         if not os.path.exists(vh_key):
+            logger.debug("Generating vhost key")
+
             proc = await asyncio.create_subprocess_exec(
                 'openssl', 'genrsa',
                 '-out', vh_key,
@@ -279,23 +283,31 @@ async def generate_CA():
             await proc.communicate()
         
         # Create temporary CA directory structure
+        logger.debug("Creating temporary CA directory")
         tmp_ca_dir = tempfile.mkdtemp(prefix='TopGenCA.')
         
         # Create serial and index files
+        logger.debug("Creating serial file")
         with open(os.path.join(tmp_ca_dir, "serial"), 'w') as f:
             f.write("000a")
+
+        logger.debug("Creating index file")
         with open(os.path.join(tmp_ca_dir, "index"), 'w') as f:
+
             pass  # Create empty index file
     
         # Write CA configuration
+        logger.debug("Creating CA configuration file")
         ca_conf_path = os.path.join(tmp_ca_dir, "ca.conf")
+
         # Create Dict of CA configuration values
+        logger.debug("Creating CA configuration dictionary")
         ca_dict = {
             'tmp_ca_dir': tmp_ca_dir,
             'ca_cert': ca_cert,
             'ca_key': ca_key
         }
-        
+
         with open(ca_conf_path, 'w') as f:
             with open (os.path.join(TOPGEN_TEMPLATES, "CertificateAuthority.conf"), 'r') as template:
                 template_source = Template(template.read())
@@ -321,6 +333,7 @@ async def generate_vhost_certificates():
 
     with manager.counter(total=len(vhosts), desc='Generate vHost Certificates', bar_format=BAR_FMT) as pbar:
         for vhost in vhosts:
+            logger.debug(f"[{vhost}] Generating Certificate")
             vhost_base = os.path.basename(vhost)
             cert_path = os.path.join(TOPGEN_CERTS, f"{vhost_base}.cer")
 
@@ -337,7 +350,7 @@ async def generate_vhost_certificates():
                 stdin=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.DEVNULL
             )
-                
+
             # Generate CSR and pipe to CA
             csr_cmd = [
                 'openssl', 'req', '-new',
@@ -345,7 +358,7 @@ async def generate_vhost_certificates():
                 '-subj', '/C=US/ST=PA/L=Pgh/O=CMU/OU=CERT/CN=topgen_vh',
                 '-config', '-'
             ]
-
+            logger.debug(f"[{vhost}] Sending Certificate Signing Request")
             csr_proc = await asyncio.create_subprocess_exec(
                 *csr_cmd,
                 stdin=asyncio.subprocess.PIPE,
@@ -357,6 +370,7 @@ async def generate_vhost_certificates():
             await proc.communicate(csr)
 
             pbar.update(1)
+            logger.debug(f"[{vhost}] Wrote certificate to {cert_path}")
 
 async def generate_nginx_conf():
     vhosts = list(glob.glob(f"{TOPGEN_VHOSTS}/*"))
@@ -386,7 +400,7 @@ async def generate_nginx_conf():
             with open(os.path.join(TOPGEN_VARETC, "nginx.conf"), 'a') as f:
                 nginx_block = nginx_block_template.substitute(cert_path=cert_path, vhost_base=vhost_base, vhost=vhost)
                 f.write(nginx_block)
-                logger.debug(f"Wrote nginx block for {vhost_base}")
+                logger.debug(f"[{vhost_base}] Wrote nginx block to nginx.conf")
             pbar.update(1)
         logger.debug(f"Finished writing nginx.conf for {len(vhosts)} vhosts")
 
@@ -406,15 +420,18 @@ async def generate_hosts_nginx():
             # Resolve IP address
             try:
                 # Using socket to resolve hostname
+                logger.debug(f"[{vhost}] Gathering IP Address from external DNS")
                 import socket
                 vhost_ip = socket.gethostbyname(vhost_base)
             except socket.gaierror:
                 # Use fallback IP for unresolvable hosts
                 vhost_ip = "1.0.0.0"
+                logger.warning(f"[{vhost}] Unable to resolve IP address, using fallback IP {vhost_ip}")
             
             # Append to hosts.nginx file
             with open(os.path.join(TOPGEN_VARETC, "hosts.nginx"), 'a') as f:
                 f.write(f"{vhost_ip} {vhost_base}\n")
+            logger.debug(f"[{vhost}] Wrote {vhost_ip} {vhost_base} to hosts.nginx")
 
             pbar.update(1)
 
