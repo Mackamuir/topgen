@@ -13,10 +13,7 @@ import atexit
 import enlighten
 import argparse
 import resource
-
-# Set Environment to either 'Development' or 'Production'
-# dev will always overwrite all filed while prod will only write if the file does not exist
-ENVIRONMENT = "Production"
+import socket
 
 # How deep will wget go, setting this to anything more than 1 will increase scrape time by a LOT, but will result in more complete sites
 wget_depth = 1
@@ -83,7 +80,11 @@ def format_elapsed_time(seconds):
     else:
         return f"{secs}s"
 
-
+async def update_progress(tasks, pbar):
+    while not all(task.done() for task in tasks):
+        completed = sum(task.done() for task in tasks)
+        pbar.count = completed
+        await asyncio.sleep(1)
 # Big Boy Functions
 
 async def download_websites():
@@ -100,15 +101,9 @@ async def download_websites():
     pbar = manager.counter(total=len(tasks),desc='Scraping Websites',bar_format=BAR_FMT)
     await asyncio.sleep(0.1)  # Wait for progress bar to initialize
     # Update progress bar every second
-    async def update_progress():
-        while not all(task.done() for task in tasks):
-            completed = sum(task.done() for task in tasks)
-            pbar.count = completed
-            pbar.refresh()
-            await asyncio.sleep(1)
     
     # Run progress updater and tasks
-    update_task = asyncio.create_task(update_progress())
+    update_task = asyncio.create_task(update_progress(tasks, pbar))
     await asyncio.gather(*tasks)
     await update_task
 
@@ -121,7 +116,7 @@ async def download_website(url):
     if not url:
         raise ValueError("URL is empty")
     hostname = urlparse(url).hostname
-    pbar = manager.counter(desc='    Scraping %s' % hostname, autorefresh=True, counter_format='{desc}:{desc_pad}[Elapsed: {elapsed}]')
+    pbar = manager.counter(desc='    Scraping %s' % hostname, autorefresh=True, leave=False, counter_format='{desc}:{desc_pad}[Elapsed: {elapsed}]')
     try:
         proc = await asyncio.create_subprocess_shell(
             f"/usr/bin/wget -v --page-requisites --recursive --adjust-extension --span-hosts -N --convert-file-only --no-check-certificate -e robots=off --random-wait -t 2 -U 'Mozilla/5.0 (X11)' -P {TOPGEN_VHOSTS} -l {wget_depth} {url}",
@@ -150,14 +145,10 @@ async def download_website(url):
             logger.error(f'{hostname}: wget returned non-zero exit code {proc.returncode}')
         
         logger.info(f'✓ {hostname} ({format_elapsed_time(pbar.elapsed)})')
-        pbar.desc = f'    ✓ {hostname} ({format_elapsed_time(pbar.elapsed)})'
-        pbar.counter_format = '{desc}'
-        pbar.close()
-    
+
     except Exception as e:
         logger.error(f'Failed {hostname} after {format_elapsed_time(pbar.elapsed)}: {str(e)}')
-        pbar.desc = f'    X {hostname} ({format_elapsed_time(pbar.elapsed)})'
-        pbar.counter_format = '{desc}'
+    finally:
         pbar.close()
 
 async def handle_custom_vhosts():
@@ -381,18 +372,11 @@ async def generate_hosts_nginx():
         tasks.append(task)
 
     # Create progress bar
-    pbar = manager.counter(total=len(tasks),desc='Generating hosts.nginx',bar_format=BAR_FMT)
+    pbar = manager.counter(total=len(tasks), desc='Generating hosts.nginx', autorefresh=True, bar_format=BAR_FMT)
     await asyncio.sleep(0.1)  # Wait for progress bar to initialize
-    # Update progress bar every second
-    async def update_progress():
-        while not all(task.done() for task in tasks):
-            completed = sum(task.done() for task in tasks)
-            pbar.count = completed
-            pbar.refresh()
-            await asyncio.sleep(1)
 
     # Run progress updater and tasks
-    update_task = asyncio.create_task(update_progress())
+    update_task = asyncio.create_task(update_progress(tasks, pbar))
     await asyncio.gather(*tasks)
     await update_task
 
@@ -407,7 +391,6 @@ async def generate_vhost_hosts_nginx(vhost):
     try:
         # Using socket to resolve hostname
         logger.debug(f"[{vhost}] Gathering IP Address from external DNS")
-        import socket
         vhost_ip = socket.gethostbyname(vhost_base)
     except socket.gaierror:
         # Use fallback IP for unresolvable hosts
@@ -436,6 +419,7 @@ async def generate_nginx_conf():
                     template_source = Template(template.read())
                     template_result = template_source.substitute(TOPGEN_VARETC=TOPGEN_VARETC)
                 f.write(template_result)
+                f.flush()
                 logger.debug("Writing base for nginx.conf")
         except Exception as e:
             logger.error(f'Failed writing base for nginx.conf: {str(e)}')
@@ -461,15 +445,16 @@ async def generate_nginx_conf():
 async def main():
     global TOPGEN_ORIG
     global TOPGEN_VARLIB
-    global ENVIRONMENT
 
     parser = argparse.ArgumentParser(description="Recursively scrape, clean, curate a given list of Web sites. Additionally, issue certificates signed with a self-signed TopGen CA (which is in turn also generated, if necessary). Generate a drop-in config file for the nginx HTTP server, and a hosts file containing <ip_addr fqdn> entries for each scraped vhost.", formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument("-s", "--sites", help=f"file containing space or newline separated sites to be scraped for static content; lines beginning with '#' are ignored;\n(default: {TOPGEN_ORIG})", default=TOPGEN_ORIG)
     parser.add_argument("-t", "--target-dir", help=f"directory where all results (scraped content, list of vhosts, certificates, configuration files, etc. are stored;\n(default: {TOPGEN_VARLIB})", default=TOPGEN_VARLIB)
-    parser.add_argument("-e", "--environment", help=f"environment in which to run the script; 'Development' will overwrite all files, 'Production' will only write files that do not exist;\n(default: {ENVIRONMENT})", default=ENVIRONMENT)
+    # Set Environment to either 'Development' or 'Production'
+    # dev will always overwrite all filed while prod will only write if the file does not exist
+    parser.add_argument("-e", "--environment", help="environment in which to run the script; 'Development' will overwrite all files, 'Production' will only write files that do not exist;\\n(default: Production)", default="Production")
     parser.add_argument("-d", "--skip-scrape", help="Skip the scraping of websites, for if you want to quickly add new vhosts.", action='store_false')
+    parser.add_argument("-h", "--skip-hosts", help="Skip generating of the hosts.nginx file", action='store_false')
     args = parser.parse_args()
-    SKIP_SCRAPE = args.skip_scrape
     TOPGEN_ORIG = args.sites
     TOPGEN_VARLIB = args.target_dir
     ENVIRONMENT = args.environment
@@ -480,7 +465,7 @@ async def main():
     
     if ENVIRONMENT == "Development" or ENVIRONMENT == "Production" and len(os.listdir(TOPGEN_VHOSTS)) == 0:
         status.update(stage="Creating vHosts")
-        if SKIP_SCRAPE:
+        if args.skip_scrape:
             await download_websites()
         await handle_custom_vhosts()
         await cleanup_vhosts()
@@ -499,7 +484,8 @@ async def main():
     if ENVIRONMENT == "Development" or ENVIRONMENT == "Production" and not os.path.exists(os.path.join(TOPGEN_ETC, "hosts.nginx")) and os.path.exists(os.path.join(TOPGEN_ETC, "nginx.conf")):
         status.update(stage="Generating Nginx config files")
         if ENVIRONMENT == "Development" or ENVIRONMENT == "Production" and not len(os.path.exists(os.path.join(TOPGEN_ETC, "hosts.nginx"))):
-            await generate_hosts_nginx()
+            if args.skip_host:
+                await generate_hosts_nginx()
         else:
             logger.debug("Skipping hosts.nginx generation")
         if ENVIRONMENT == "Development" or ENVIRONMENT == "Production" and not os.path.exists(os.path.join(TOPGEN_ETC, "nginx.conf")):
