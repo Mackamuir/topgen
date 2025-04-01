@@ -465,11 +465,13 @@ async def main():
 
     parser = argparse.ArgumentParser(description="Recursively scrape, clean, curate a given list of Web sites. Additionally, issue certificates signed with a self-signed TopGen CA (which is in turn also generated, if necessary). Generate a drop-in config file for the nginx HTTP server, and a hosts file containing <ip_addr fqdn> entries for each scraped vhost.", formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument("-s", "--sites", help=f"file containing space or newline separated sites to be scraped for static content; lines beginning with '#' are ignored;\n(default: {TOPGEN_ORIG})", default=TOPGEN_ORIG)
-    parser.add_argument("-t", "--targetdir", help=f"directory where all results (scraped content, list of vhosts, certificates, configuration files, etc. are stored;\n(default: {TOPGEN_VARLIB})", default=TOPGEN_VARLIB)
+    parser.add_argument("-t", "--target-dir", help=f"directory where all results (scraped content, list of vhosts, certificates, configuration files, etc. are stored;\n(default: {TOPGEN_VARLIB})", default=TOPGEN_VARLIB)
     parser.add_argument("-e", "--environment", help=f"environment in which to run the script; 'Development' will overwrite all files, 'Production' will only write files that do not exist;\n(default: {ENVIRONMENT})", default=ENVIRONMENT)
+    parser.add_argument("-d", "--skip-scrape", help="Skip the scraping of websites, for if you want to quickly add new vhosts.", action='store_true')
     args = parser.parse_args()
+    SKIP_SCRAPE = args.SKIP_SCRAPE
     TOPGEN_ORIG = args.sites
-    TOPGEN_VARLIB = args.targetdir
+    TOPGEN_VARLIB = args.targe_tdir
     ENVIRONMENT = args.environment
 
     status = manager.status_bar(status_format=u'Topgen-Scrape - {ENVIRONMENT}{fill}{stage}{fill}{elapsed}',
@@ -478,7 +480,8 @@ async def main():
     
     if ENVIRONMENT == "Development" or ENVIRONMENT == "Production" and len(os.listdir(TOPGEN_VHOSTS)) == 0:
         status.update(stage="Creating vHosts")
-        await download_websites()
+        if SKIP_SCRAPE:
+            await download_websites()
         await handle_custom_vhosts()
         await cleanup_vhosts()
         await curate_vhosts()
