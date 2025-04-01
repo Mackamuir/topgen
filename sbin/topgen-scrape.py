@@ -467,7 +467,7 @@ async def main():
     parser.add_argument("-s", "--sites", help=f"file containing space or newline separated sites to be scraped for static content; lines beginning with '#' are ignored;\n(default: {TOPGEN_ORIG})", default=TOPGEN_ORIG)
     parser.add_argument("-t", "--target-dir", help=f"directory where all results (scraped content, list of vhosts, certificates, configuration files, etc. are stored;\n(default: {TOPGEN_VARLIB})", default=TOPGEN_VARLIB)
     parser.add_argument("-e", "--environment", help=f"environment in which to run the script; 'Development' will overwrite all files, 'Production' will only write files that do not exist;\n(default: {ENVIRONMENT})", default=ENVIRONMENT)
-    parser.add_argument("-d", "--skip-scrape", help="Skip the scraping of websites, for if you want to quickly add new vhosts.", action='store_true')
+    parser.add_argument("-d", "--skip-scrape", help="Skip the scraping of websites, for if you want to quickly add new vhosts.", action='store_false')
     args = parser.parse_args()
     SKIP_SCRAPE = args.skip_scrape
     TOPGEN_ORIG = args.sites
