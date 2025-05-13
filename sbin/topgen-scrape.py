@@ -346,7 +346,7 @@ async def generate_vhost_certificates():
                 'openssl', 'req', '-new',
                 '-key', os.path.join(TOPGEN_VARETC, "topgen_vh.key"),
                 '-subj', '/C=US/ST=PA/L=Pgh/O=CMU/OU=CERT/CN=topgen_vh',
-                '-config', '-'
+                '-addext', f'subjectAltName = DNS:{vhost_base}'
             ]
             logger.debug(f"[{vhost}] Sending Certificate Signing Request")
             csr_proc = await asyncio.create_subprocess_exec(
